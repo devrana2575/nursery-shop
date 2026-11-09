@@ -1,176 +1,132 @@
 import { useState } from 'react';
-import axios from 'axios';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { getErrorMessage } from '../api/client';
+import { DEMO_CREDENTIALS } from '../constants';
+import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { validateLogin } from '../utils/validation';
 
-// ── inline validation rules ──────────────────────────────────────────
-function validate(form) {
-  const errors = {};
+export default function Login() {
+  const { login } = useAuth();
+  const { showToast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const redirectTo = location.state?.from?.pathname;
 
-  const email = form.email.trim();
-  if (!email) {
-    errors.email = 'Email is required.';
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    errors.email = 'Enter a valid email address.';
-  }
-
-  const pwd = form.password;
-  if (!pwd) {
-    errors.password = 'Password is required.';
-  } else if (pwd.length < 6) {
-    errors.password = 'Password must be at least 6 characters.';
-  }
-
-  return errors;
-}
-
-export default function Login({ onLogin, goToRegister }) {
-  const [form,    setForm]    = useState({ email: '', password: '' });
-  const [errors,  setErrors]  = useState({});          // field-level errors
-  const [apiErr,  setApiErr]  = useState('');           // server error
+  const [form, setForm] = useState({ email: '', password: '' });
+  const [errors, setErrors] = useState({});
+  const [apiError, setApiError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPwd, setShowPwd] = useState(false);
-  const [touched, setTouched] = useState({});           // track blurred fields
+  const [showPassword, setShowPassword] = useState(false);
 
-  // validate one field on blur
-  const handleBlur = (field) => {
-    setTouched(t => ({ ...t, [field]: true }));
-    const errs = validate(form);
-    setErrors(e => ({ ...e, [field]: errs[field] }));
-  };
-
-  // clear field error while typing
   const handleChange = (field, value) => {
-    setForm(f => ({ ...f, [field]: value }));
-    if (touched[field]) {
-      const errs = validate({ ...form, [field]: value });
-      setErrors(e => ({ ...e, [field]: errs[field] }));
-    }
+    setForm((current) => ({ ...current, [field]: value }));
+    if (errors[field]) setErrors((current) => ({ ...current, [field]: undefined }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setApiErr('');
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setApiError('');
 
-    // mark all fields touched, run full validation
-    setTouched({ email: true, password: true });
-    const errs = validate(form);
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
+    const nextErrors = validateLogin(form);
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
 
     setLoading(true);
     try {
-      const res = await axios.post('/api/login', {
+      const user = await login({
         email: form.email.trim(),
         password: form.password,
       });
-      onLogin(res.data);
+      showToast(`Welcome back, ${user.name}!`);
+      navigate(redirectTo || (user.role === 'admin' ? '/admin' : '/'), { replace: true });
     } catch (error) {
-      setApiErr(error.response?.data?.message || 'Login failed. Please try again.');
+      setApiError(getErrorMessage(error, 'Login failed. Please try again.'));
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div style={s.wrap}>
-      <div style={s.card}>
+  const fillDemo = (role) => {
+    setForm(DEMO_CREDENTIALS[role]);
+    setErrors({});
+    setApiError('');
+  };
 
-        {/* Header */}
-        <div style={s.header}>
-          <div style={s.logo}>🌿</div>
-          <h2 style={s.title}>Welcome Back</h2>
-          <p style={s.subtitle}>Login to your nursery account</p>
+  return (
+    <div className="auth-wrap">
+      <section className="card auth-card">
+        <div className="auth-header">
+          <div className="auth-logo" aria-hidden="true">🌿</div>
+          <h1>Welcome back</h1>
+          <p className="muted">Sign in to place orders and track deliveries.</p>
         </div>
 
-        {/* API / server error */}
-        {apiErr && (
-          <div style={s.apiError}>
-            <span>⚠️</span> {apiErr}
-          </div>
-        )}
+        {apiError && <div className="alert alert-error" role="alert">{apiError}</div>}
 
         <form onSubmit={handleSubmit} noValidate>
-
-          {/* Email */}
-          <div style={s.field}>
-            <label style={s.label}>Email Address</label>
+          <div className="field">
+            <label className="label" htmlFor="login-email">Email address</label>
             <input
-              style={{ ...s.input, ...(errors.email && touched.email ? s.inputError : {}) }}
+              id="login-email"
+              className="input"
               type="email"
+              autoComplete="email"
               placeholder="you@email.com"
               value={form.email}
-              onChange={e => handleChange('email', e.target.value)}
-              onBlur={() => handleBlur('email')}
-              autoComplete="email"
+              onChange={(event) => handleChange('email', event.target.value)}
+              aria-invalid={Boolean(errors.email)}
             />
-            {errors.email && touched.email && (
-              <p style={s.fieldError}>❌ {errors.email}</p>
-            )}
+            {errors.email && <p className="field-error">{errors.email}</p>}
           </div>
 
-          {/* Password */}
-          <div style={s.field}>
-            <label style={s.label}>Password</label>
-            <div style={s.pwdWrap}>
+          <div className="field">
+            <label className="label" htmlFor="login-password">Password</label>
+            <div className="input-with-action">
               <input
-                style={{ ...s.input, ...s.pwdInput, ...(errors.password && touched.password ? s.inputError : {}) }}
-                type={showPwd ? 'text' : 'password'}
-                placeholder="Min. 6 characters"
-                value={form.password}
-                onChange={e => handleChange('password', e.target.value)}
-                onBlur={() => handleBlur('password')}
+                id="login-password"
+                className="input"
+                type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
+                placeholder="Your password"
+                value={form.password}
+                onChange={(event) => handleChange('password', event.target.value)}
+                aria-invalid={Boolean(errors.password)}
               />
               <button
                 type="button"
-                style={s.eyeBtn}
-                onClick={() => setShowPwd(v => !v)}
-                tabIndex={-1}
+                className="input-action"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
-                {showPwd ? '🙈' : '👁️'}
+                {showPassword ? '🙈' : '👁️'}
               </button>
             </div>
-            {errors.password && touched.password && (
-              <p style={s.fieldError}>❌ {errors.password}</p>
-            )}
+            {errors.password && <p className="field-error">{errors.password}</p>}
           </div>
 
-          <button type="submit" style={s.btn} disabled={loading}>
-            {loading ? '⏳ Logging in...' : '🔐 Login'}
+          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
 
-        <p style={s.link}>
-          Don't have an account?{' '}
-          <span onClick={goToRegister} style={s.anchor}>Register here</span>
+        <p className="auth-switch">
+          New here? <Link to="/register">Create an account</Link>
         </p>
 
-        {/* Demo hint for examiner */}
-        <div style={s.hint}>
-          <strong>Demo:</strong> admin@nursery.com / admin123
+        <div className="demo-box">
+          <p><strong>Demo accounts</strong></p>
+          <div className="demo-actions">
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => fillDemo('user')}>
+              User demo
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => fillDemo('admin')}>
+              Admin demo
+            </button>
+          </div>
+          <p className="hint">user@nursery.com / user1234 · admin@nursery.com / admin123</p>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
-
-const s = {
-  wrap:       { display: 'flex', justifyContent: 'center', paddingTop: '3rem', paddingBottom: '3rem' },
-  card:       { background: '#fff', padding: '2.5rem', borderRadius: '16px', boxShadow: '0 4px 24px rgba(0,0,0,0.10)', width: '100%', maxWidth: '420px' },
-  header:     { textAlign: 'center', marginBottom: '1.8rem' },
-  logo:       { fontSize: '3rem', marginBottom: '0.4rem' },
-  title:      { color: '#2c6e49', margin: '0 0 0.3rem', fontSize: '1.5rem', fontWeight: '800' },
-  subtitle:   { color: '#888', fontSize: '0.9rem', margin: 0 },
-  apiError:   { background: '#fdf0f0', border: '1px solid #f5c6cb', color: '#721c24', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1.2rem', fontSize: '0.9rem', display: 'flex', gap: '0.5rem', alignItems: 'center' },
-  field:      { marginBottom: '1.1rem' },
-  label:      { display: 'block', fontWeight: '600', color: '#444', fontSize: '0.88rem', marginBottom: '0.35rem' },
-  input:      { width: '100%', padding: '0.7rem 1rem', border: '1.5px solid #ddd', borderRadius: '8px', fontSize: '0.95rem', boxSizing: 'border-box', outline: 'none', transition: 'border 0.2s' },
-  inputError: { border: '1.5px solid #e74c3c', background: '#fff8f8' },
-  fieldError: { color: '#e74c3c', fontSize: '0.8rem', margin: '0.3rem 0 0', fontWeight: '500' },
-  pwdWrap:    { position: 'relative' },
-  pwdInput:   { paddingRight: '2.8rem' },
-  eyeBtn:     { position: 'absolute', right: '0.7rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', fontSize: '1rem', cursor: 'pointer', padding: '0.2rem' },
-  btn:        { width: '100%', padding: '0.85rem', background: '#2c6e49', color: '#fff', border: 'none', borderRadius: '10px', fontSize: '1rem', fontWeight: '700', marginTop: '0.4rem', cursor: 'pointer', opacity: 1 },
-  link:       { textAlign: 'center', marginTop: '1.2rem', color: '#666', fontSize: '0.9rem' },
-  anchor:     { color: '#2c6e49', cursor: 'pointer', fontWeight: '700', textDecoration: 'underline' },
-  hint:       { marginTop: '1rem', background: '#f0faf0', border: '1px dashed #a8d8a8', borderRadius: '8px', padding: '0.6rem 1rem', fontSize: '0.8rem', color: '#555', textAlign: 'center' },
-};

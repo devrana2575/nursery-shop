@@ -1,78 +1,204 @@
-import { useState, useEffect } from 'react';
-import axios from 'axios';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { getErrorMessage } from '../api/client';
+import { ordersApi } from '../api/orders';
+import { plantsApi } from '../api/plants';
+import ConfirmDialog from '../components/ConfirmDialog';
+import EmptyState from '../components/EmptyState';
+import ErrorState from '../components/ErrorState';
+import Spinner from '../components/Spinner';
+import { useToast } from '../context/ToastContext';
+import { formatCurrency } from '../utils/format';
 
-export default function PlantList({ onEdit }) {
+export default function PlantList() {
+  const { showToast } = useToast();
   const [plants, setPlants] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
-  const fetchPlants = async () => {
+  const loadDashboard = useCallback(async () => {
     setLoading(true);
-    const res = await axios.get('/api/plants');
-    setPlants(res.data);
-    setLoading(false);
+    setError('');
+    try {
+      const [plantsResponse, statsResponse] = await Promise.all([
+        plantsApi.list({ limit: 100, sort: 'name' }),
+        ordersApi.stats(),
+      ]);
+      setPlants(plantsResponse.data.plants);
+      setStats(statsResponse.data.stats);
+    } catch (err) {
+      setError(getErrorMessage(err, 'Could not load the dashboard.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return plants;
+    return plants.filter(
+      (plant) =>
+        plant.name.toLowerCase().includes(term) ||
+        plant.category.toLowerCase().includes(term)
+    );
+  }, [plants, search]);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await plantsApi.remove(deleteTarget._id);
+      showToast(`${deleteTarget.name} deleted.`, 'info');
+      setDeleteTarget(null);
+      await loadDashboard();
+    } catch (err) {
+      showToast(getErrorMessage(err, 'Could not delete the plant.'), 'error');
+    } finally {
+      setDeleting(false);
+    }
   };
 
-  useEffect(() => { fetchPlants(); }, []);
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Delete this plant?')) return;
-    await axios.delete(`/api/plants/${id}`);
-    setMsg('Plant deleted!');
-    fetchPlants();
-    setTimeout(() => setMsg(''), 2000);
-  };
-
-  if (loading) return <p style={s.info}>Loading plants...</p>;
+  if (loading) return <Spinner label="Loading dashboard..." />;
+  if (error) return <ErrorState message={error} onRetry={loadDashboard} />;
 
   return (
     <div>
-      <h2 style={s.heading}>All Plants ({plants.length})</h2>
+      <div className="page-header">
+        <div>
+          <h1 className="page-heading">📋 Admin dashboard</h1>
+          <p className="muted page-subtitle">Manage inventory, stock levels and orders.</p>
+        </div>
+        <Link className="btn btn-primary" to="/admin/plants/new">➕ Add plant</Link>
+      </div>
 
-      {msg && <p style={s.success}>{msg}</p>}
+      {stats && (
+        <div className="stats-grid">
+          <div className="card stat-card">
+            <span className="stat-label">Plants</span>
+            <span className="stat-value">{stats.totalPlants}</span>
+            <span className="hint">{stats.lowStockPlants} low on stock</span>
+          </div>
+          <div className="card stat-card">
+            <span className="stat-label">Orders</span>
+            <span className="stat-value">{stats.totalOrders}</span>
+            <span className="hint">{stats.pendingOrders} pending</span>
+          </div>
+          <div className="card stat-card">
+            <span className="stat-label">Confirmed</span>
+            <span className="stat-value">{stats.confirmedOrders}</span>
+            <span className="hint">{stats.deliveredOrders} delivered</span>
+          </div>
+          <div className="card stat-card">
+            <span className="stat-label">Revenue</span>
+            <span className="stat-value">{formatCurrency(stats.revenue)}</span>
+            <span className="hint">Delivered orders only</span>
+          </div>
+        </div>
+      )}
+
+      <div className="filter-bar">
+        <input
+          className="input"
+          type="search"
+          placeholder="🔍 Search inventory by name or category..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          aria-label="Search inventory"
+        />
+      </div>
 
       {plants.length === 0 ? (
-        <p style={s.info}>No plants found. Add some!</p>
+        <EmptyState
+          icon="🌱"
+          title="No plants in the catalogue"
+          description="Add your first plant to start selling."
+          action={<Link className="btn btn-primary" to="/admin/plants/new">Add plant</Link>}
+        />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          icon="🔍"
+          title="No matching plants"
+          description="Try a different search term."
+          action={
+            <button type="button" className="btn btn-secondary" onClick={() => setSearch('')}>
+              Clear search
+            </button>
+          }
+        />
       ) : (
-        <table style={s.table}>
-          <thead>
-            <tr>
-              {['Name', 'Category', 'Price', 'Stock', 'Description', 'Actions'].map(h => (
-                <th key={h} style={s.th}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {plants.map(p => (
-              <tr key={p._id} style={s.tr}>
-                <td style={s.td}>{p.name}</td>
-                <td style={s.td}>{p.category}</td>
-                <td style={s.td}>₹{p.price}</td>
-                <td style={s.td}>{p.stock}</td>
-                <td style={{ ...s.td, color: '#666', fontSize: '0.85rem' }}>
-                  {p.description || '—'}
-                </td>
-                <td style={s.td}>
-                  <button onClick={() => onEdit(p)} style={s.editBtn}>Edit</button>
-                  <button onClick={() => handleDelete(p._id)} style={s.deleteBtn}>Delete</button>
-                </td>
+        <div className="card table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Plant</th>
+                <th>Category</th>
+                <th>Price</th>
+                <th>Stock</th>
+                <th>Featured</th>
+                <th className="align-right">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((plant) => (
+                <tr key={plant._id}>
+                  <td>
+                    <div className="table-plant">
+                      <span className="table-thumb" aria-hidden="true">
+                        {plant.image ? <img src={plant.image} alt="" loading="lazy" /> : '🌿'}
+                      </span>
+                      <div>
+                        <strong>{plant.name}</strong>
+                        <p className="hint table-desc">{plant.description || 'No description'}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{plant.category}</td>
+                  <td>{formatCurrency(plant.price)}</td>
+                  <td>
+                    <span className={plant.stock <= 5 ? 'badge badge-pending' : 'badge badge-neutral'}>
+                      {plant.stock}
+                    </span>
+                  </td>
+                  <td>{plant.featured ? '⭐ Yes' : '—'}</td>
+                  <td className="align-right">
+                    <div className="table-actions">
+                      <Link className="btn btn-secondary btn-sm" to={`/admin/plants/${plant._id}/edit`}>
+                        Edit
+                      </Link>
+                      <button
+                        type="button"
+                        className="btn btn-danger btn-sm"
+                        onClick={() => setDeleteTarget(plant)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={`Delete ${deleteTarget?.name || 'this plant'}?`}
+        description="This removes the plant from the catalogue. Existing orders keep their saved item details."
+        confirmLabel="Delete plant"
+        danger
+        busy={deleting}
+        onConfirm={handleDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }
-
-const s = {
-  heading: { color: '#2c6e49', marginBottom: '1rem' },
-  info:    { color: '#666', padding: '1rem 0' },
-  success: { background: '#d4edda', color: '#155724', padding: '0.6rem 1rem', borderRadius: '6px', marginBottom: '1rem' },
-  table:   { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: '10px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' },
-  th:      { background: '#2c6e49', color: '#fff', padding: '0.75rem 1rem', textAlign: 'left', fontWeight: '600' },
-  tr:      { borderBottom: '1px solid #eee' },
-  td:      { padding: '0.75rem 1rem', verticalAlign: 'middle' },
-  editBtn:   { padding: '0.3rem 0.8rem', background: '#fff3cd', border: 'none', borderRadius: '5px', marginRight: '0.4rem', fontWeight: '600' },
-  deleteBtn: { padding: '0.3rem 0.8rem', background: '#f8d7da', border: 'none', borderRadius: '5px', fontWeight: '600' },
-};

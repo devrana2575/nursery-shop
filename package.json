@@ -1,0 +1,18 @@
+{
+  "name": "nursery-shop",
+  "version": "2.0.0",
+  "private": true,
+  "description": "A production-minded MERN nursery shop with JWT auth, role-based admin tools and stock-safe ordering.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "seed": "npm --prefix backend run seed",
+    "test": "npm --prefix backend test",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start"
+  }
+}

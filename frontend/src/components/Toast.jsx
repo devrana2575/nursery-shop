@@ -1,18 +1,29 @@
-export default function Toast({ msg, type = 'success' }) {
-  const bg = type === 'error' ? '#e74c3c' : '#27ae60';
+const ICONS = {
+  success: '✅',
+  error: '⚠️',
+  warning: '⚠️',
+  info: 'ℹ️',
+};
+
+export default function ToastContainer({ toasts, onDismiss }) {
+  if (!toasts.length) return null;
+
   return (
-    <div style={{ ...s.toast, background: bg }}>
-      {msg}
+    <div className="toast-container" aria-live="polite" aria-atomic="false">
+      {toasts.map((toast) => (
+        <div key={toast.id} className={`toast toast-${toast.type}`} role="status">
+          <span aria-hidden="true">{ICONS[toast.type] || ICONS.info}</span>
+          <span className="toast-message">{toast.message}</span>
+          <button
+            type="button"
+            className="toast-close"
+            aria-label="Dismiss notification"
+            onClick={() => onDismiss(toast.id)}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
     </div>
   );
 }
-
-const s = {
-  toast: {
-    position: 'fixed', top: '1rem', right: '1rem', zIndex: 3000,
-    color: '#fff', padding: '0.75rem 1.3rem', borderRadius: '10px',
-    fontWeight: '600', fontSize: '0.95rem',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-    animation: 'fadeIn 0.3s ease',
-  },
-};

@@ -1,101 +1,135 @@
 import { useState } from 'react';
+import { contactApi } from '../api/contact';
+import { getErrorMessage } from '../api/client';
+
+const EMPTY = { name: '', email: '', message: '' };
+
+const INFO = [
+  { icon: '📍', label: 'Address', value: '12, Garden View Road, Anand, Gujarat 388001' },
+  { icon: '📞', label: 'Phone', value: '+91 98765 43210' },
+  { icon: '✉️', label: 'Email', value: 'hello@greenplants.in' },
+  { icon: '🕐', label: 'Working hours', value: 'Mon–Sat: 9am – 7pm · Sunday: 10am – 5pm' },
+];
 
 export default function Contact() {
-  const [form, setForm] = useState({ name: '', email: '', message: '' });
-  const [sent, setSent] = useState(false);
+  const [form, setForm] = useState(EMPTY);
+  const [errors, setErrors] = useState({});
+  const [apiError, setApiError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [sending, setSending] = useState(false);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    // In real project this would call an API
-    setSent(true);
-    setForm({ name: '', email: '', message: '' });
+  const handleChange = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+    if (errors[field]) setErrors((current) => ({ ...current, [field]: undefined }));
+  };
+
+  const validate = () => {
+    const next = {};
+    if (!form.name.trim()) next.name = 'Your name is required.';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      next.email = 'Enter a valid email address.';
+    }
+    if (form.message.trim().length < 10) {
+      next.message = 'Please write at least 10 characters.';
+    }
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setApiError('');
+    setSuccess('');
+    if (!validate()) return;
+
+    setSending(true);
+    try {
+      const { data } = await contactApi.send({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        message: form.message.trim(),
+      });
+      setSuccess(data.message);
+      setForm(EMPTY);
+    } catch (err) {
+      setApiError(getErrorMessage(err, 'Could not send your message. Please try again.'));
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
-    <div style={s.wrap}>
-      <h2 style={s.heading}>📞 Contact Us</h2>
-      <p style={s.sub}>Have a question? We'd love to hear from you.</p>
+    <div>
+      <h1 className="page-heading">📞 Contact us</h1>
+      <p className="muted page-subtitle">Questions about a plant or an order? Send us a note.</p>
 
-      <div style={s.grid}>
-
-        {/* Info cards */}
-        <div style={s.infoCol}>
-          {[
-            { icon: '📍', label: 'Address',       value: '12, Garden View Road, Anand, Gujarat - 388001' },
-            { icon: '📞', label: 'Phone',          value: '+91 98765 43210' },
-            { icon: '✉️', label: 'Email',          value: 'hello@greenplants.in' },
-            { icon: '🕐', label: 'Working Hours',  value: 'Mon–Sat: 9am – 7pm\nSunday: 10am – 5pm' },
-          ].map(item => (
-            <div key={item.label} style={s.infoCard}>
-              <span style={s.infoIcon}>{item.icon}</span>
+      <div className="contact-grid">
+        <div className="stack">
+          {INFO.map((item) => (
+            <div key={item.label} className="card info-card">
+              <span className="info-icon" aria-hidden="true">{item.icon}</span>
               <div>
-                <div style={s.infoLabel}>{item.label}</div>
-                <div style={s.infoValue}>{item.value}</div>
+                <p className="info-label">{item.label}</p>
+                <p className="info-value">{item.value}</p>
               </div>
             </div>
           ))}
         </div>
 
-        {/* Contact form */}
-        <div style={s.formBox}>
-          <h3 style={s.formTitle}>Send a Message</h3>
-          {sent ? (
-            <div style={s.successMsg}>
-              ✅ Message sent! We will get back to you soon.
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} style={s.form}>
-              <div style={s.field}>
-                <label style={s.label}>Your Name</label>
-                <input style={s.input} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ravi Patel" required />
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>Email Address</label>
-                <input style={s.input} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="ravi@email.com" required />
-              </div>
-              <div style={s.field}>
-                <label style={s.label}>Message</label>
-                <textarea style={{ ...s.input, resize: 'vertical' }} rows={4} value={form.message}
-                  onChange={e => setForm({ ...form, message: e.target.value })}
-                  placeholder="Write your message here..." required />
-              </div>
-              <button type="submit" style={s.btn}>Send Message</button>
-            </form>
-          )}
-        </div>
-      </div>
+        <section className="card form-card">
+          <h2>Send a message</h2>
+          <p className="muted">We usually reply within one business day.</p>
 
-      {/* Map placeholder */}
-      <div style={s.mapBox}>
-        <div style={s.mapPlaceholder}>
-          🗺️ Google Map — Anand, Gujarat
-          <div style={{ fontSize: '0.85rem', opacity: 0.7, marginTop: '0.3rem' }}>
-            (Embed Google Maps iframe here for live deployment)
-          </div>
-        </div>
+          {success && <div className="alert alert-success" role="status">{success}</div>}
+          {apiError && <div className="alert alert-error" role="alert">{apiError}</div>}
+
+          <form onSubmit={handleSubmit} noValidate>
+            <div className="field">
+              <label className="label" htmlFor="contact-name">Your name</label>
+              <input
+                id="contact-name"
+                className="input"
+                value={form.name}
+                onChange={(event) => handleChange('name', event.target.value)}
+                placeholder="Ravi Patel"
+              />
+              {errors.name && <p className="field-error">{errors.name}</p>}
+            </div>
+
+            <div className="field">
+              <label className="label" htmlFor="contact-email">Email address</label>
+              <input
+                id="contact-email"
+                className="input"
+                type="email"
+                value={form.email}
+                onChange={(event) => handleChange('email', event.target.value)}
+                placeholder="ravi@email.com"
+              />
+              {errors.email && <p className="field-error">{errors.email}</p>}
+            </div>
+
+            <div className="field">
+              <label className="label" htmlFor="contact-message">Message</label>
+              <textarea
+                id="contact-message"
+                className="textarea"
+                rows={5}
+                maxLength={1000}
+                value={form.message}
+                onChange={(event) => handleChange('message', event.target.value)}
+                placeholder="How can we help?"
+              />
+              <p className="hint">{form.message.length}/1000 characters</p>
+              {errors.message && <p className="field-error">{errors.message}</p>}
+            </div>
+
+            <button type="submit" className="btn btn-primary btn-block" disabled={sending}>
+              {sending ? 'Sending...' : 'Send message'}
+            </button>
+          </form>
+        </section>
       </div>
     </div>
   );
 }
-
-const s = {
-  wrap:         { },
-  heading:      { color: '#2c6e49', marginBottom: '0.3rem', fontSize: '1.5rem' },
-  sub:          { color: '#888', marginBottom: '1.8rem', fontSize: '0.95rem' },
-  grid:         { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' },
-  infoCol:      { display: 'flex', flexDirection: 'column', gap: '0.9rem' },
-  infoCard:     { display: 'flex', gap: '0.9rem', alignItems: 'flex-start', background: '#fff', borderRadius: '10px', padding: '1rem', boxShadow: '0 2px 8px rgba(0,0,0,0.07)' },
-  infoIcon:     { fontSize: '1.6rem', lineHeight: 1, marginTop: '0.1rem' },
-  infoLabel:    { fontSize: '0.78rem', color: '#888', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' },
-  infoValue:    { fontSize: '0.9rem', color: '#333', fontWeight: '500', marginTop: '0.2rem', whiteSpace: 'pre-line' },
-  formBox:      { background: '#fff', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 2px 8px rgba(0,0,0,0.07)' },
-  formTitle:    { color: '#2c6e49', marginBottom: '1.2rem', fontSize: '1.1rem' },
-  form:         { display: 'flex', flexDirection: 'column', gap: '0.9rem' },
-  field:        { display: 'flex', flexDirection: 'column', gap: '0.3rem' },
-  label:        { fontSize: '0.85rem', fontWeight: '600', color: '#444' },
-  input:        { padding: '0.6rem 0.9rem', border: '1px solid #ddd', borderRadius: '8px', fontSize: '0.95rem', width: '100%', fontFamily: 'inherit' },
-  btn:          { padding: '0.7rem', background: '#2c6e49', color: '#fff', border: 'none', borderRadius: '8px', fontWeight: '700', fontSize: '1rem' },
-  successMsg:   { background: '#d4edda', color: '#155724', padding: '1rem', borderRadius: '8px', textAlign: 'center', fontWeight: '600' },
-  mapBox:       { background: '#fff', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.07)' },
-  mapPlaceholder:{ background: '#e8f5e9', height: '180px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#2c6e49', fontSize: '1.1rem', fontWeight: '600' },
-};
